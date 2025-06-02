@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MXL File Download and Analysis Tool</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+    select, button {
+      margin: 20px;
+      padding: 10px;
+    }
+    #partInfo {
+      margin-top: 20px;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+  </style>
+</head>
+<body>
+  <h1>Select an MXL File to Download and Analyze</h1>
+
+  <!-- Dropdown to select MXL file -->
+  <select id="mxlSelect">
+    <option value="">-- Select an MXL File --</option>
+    <!-- Options will be populated dynamically -->
+  </select>
+  <button onclick="downloadFile()">Download</button>
+  <button onclick="analyzeFile()">Analyze</button>
+
+  <!-- Section to display part information -->
+  <div id="partInfo"></div>
+  <pre id="output">Waiting for file...</pre>
+
+  <script src="https://unpkg.com/fflate@0.7.4/umd/index.js"></script>
+  <script>
+    // List of MXL files (replace with your actual GitHub URLs)
+    const files = [
+      { name: 'part test 3.mxl', url: 'https://raw.githubusercontent.com/georgeharrisca/3/675eaf3023e4cc7281f01fc1f59e42a630d5ae36/part%20test%203.mxl' },
+      { name: 'part test 4.mxl', url: 'https://raw.githubusercontent.com/georgeharrisca/3/f8d70f5c0c1b3862c50d85b5c18af2b11c4aeda8/part%20test%204.mxl' }
+      // Add more files as needed
+    ];
+
+    // Populate the select dropdown
+    const selectElement = document.getElementById('mxlSelect');
+    files.forEach(file => {
+      const option = document.createElement('option');
+      option.value = file.url;
+      option.textContent = file.name;
+      selectElement.appendChild(option);
+    });
+
+    // Function to trigger download
+    function downloadFile() {
+      const selectedFile = selectElement.value;
+      if (selectedFile) {
+        window.location.href = selectedFile; // Redirect to the file URL for download
+      } else {
+        alert('Please select a file to download');
+      }
+    }
+
+    // Function to analyze the selected MXL file
+    async function analyzeFile() {
+      const selectedUrl = selectElement.value;
+      if (!selectedUrl) {
+        alert('Please select a file to analyze');
+        return;
+      }
+
+      const output = document.getElementById("output");
+      output.innerText = "Analyzing file...";
+
+      try {
+        const response = await fetch(selectedUrl);
+        const buffer = await response.arrayBuffer();
+        const zip = fflate.unzipSync(new Uint8Array(buffer));
+
+        const containerPath = Object.keys(zip).find(p =>
+          p.toLowerCase().includes('meta-inf') && p.toLowerCase().endsWith('container.xml')
+        );
+        if (!containerPath) {
+          output.innerText = "Error: container.xml not found.";
+          return;
+        }
+
+        const containerXML = new TextDecoder().decode(zip[containerPath]);
+        const parser = new DOMParser();
+        const containerDoc = parser.parseFromString(containerXML, "application/xml");
+
+        const rootfile = containerDoc.querySelector("rootfile");
+        const musicXMLPath = rootfile?.getAttribute("full-path");
+        if (!musicXMLPath || !zip[musicXMLPath]) {
+          output.innerText = "Error: .musicxml file not found.";
+          return;
+        }
+
+        const musicXML = new TextDecoder().decode(zip[musicXMLPath]);
+        const musicDoc = parser.parseFromString(musicXML, "application/xml");
+
+        const scoreParts = musicDoc.getElementsByTagName("score-part");
+        output.innerText = "Score Parts:\n";
+        let partInfo = [];
+        for (let i = 0; i < scoreParts.length; i++) {
+          const part = scoreParts[i];
+          const id = part.getAttribute("id");
+          const nameNode = part.getElementsByTagName("part-name")[0];
+          const name = nameNode?.textContent || "(no name)";
+          partInfo.push(`${id}: ${name}`);
+        }
+        displayPartInfo(partInfo);
+      } catch (err) {
+        output.innerText = "An error occurred:\n" + err.message;
+        console.error(err);
+      }
+    }
+
+    // Display part information
+    function displayPartInfo(partInfo) {
+      const partInfoContainer = document.getElementById('partInfo');
+      partInfoContainer.innerHTML = '';
+      partInfo.forEach(info => {
+        const paragraph = document.createElement('p');
+        paragraph.textContent = info;
+        partInfoContainer.appendChild(paragraph);
+      });
+    }
+  </script>
+</body>
+</html>
